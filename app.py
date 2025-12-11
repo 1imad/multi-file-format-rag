@@ -28,8 +28,12 @@ async def upload_file(file: UploadFile = File(...)):
     finally:
         await file.close()
 
-    
-    content = doc_extractor(destination)
+    file_extension = file.filename.split(".")[-1].lower()
+    content = ""
+    if(file_extension == "docx"):
+        content = doc_extractor(destination)
+    else:
+        raise HTTPException(status_code=400, detail="Unsupported file type for extraction.")
 
     # Generate embeddings
     embeddings = generate_embedding(content)
