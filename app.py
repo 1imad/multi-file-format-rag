@@ -7,7 +7,6 @@ import uvicorn
 from contextlib import asynccontextmanager
 import os
 import dotenv
-import json
 
 # LlamaIndex imports
 from llama_index.core import VectorStoreIndex, Document, StorageContext, Settings
@@ -15,7 +14,9 @@ from llama_index.vector_stores.postgres import PGVectorStore
 from llama_index.embeddings.ollama import OllamaEmbedding
 
 from utils.pandoc_supported import pandoc_supported
-from utils.extractors.doc_extractor import doc_extractor
+from utils.extractors.pandoc import pandoc_extractor
+from utils.extractors.pdf import pdf_extractor
+from utils.prompts import get_system_prompt, list_available_prompts, get_prompts_info
 
 dotenv.load_dotenv()
 
@@ -103,6 +104,7 @@ class ChatMessage(BaseModel):
 class ChatRequest(BaseModel):
     message: str
     chat_history: Optional[List[ChatMessage]] = None
+    system_prompt: Optional[str] = "default"  # Can be a prompt type or custom text
 
 @app.post("/upload")
 async def upload_file(file: UploadFile = File(...)):
@@ -124,11 +126,13 @@ async def upload_file(file: UploadFile = File(...)):
         await file.close()
 
     file_extension = file.filename.split(".")[-1].lower()
-    if file_extension not in pandoc_supported():
+    if file_extension in pandoc_supported():
+        content = pandoc_extractor(destination)
+    elif file_extension == "pdf":
+        content = pdf_extractor(destination)
+    else:
         raise HTTPException(status_code=400, detail="Unsupported file type for extraction.")
-
     # Extract content with page breaks preserved
-    content = doc_extractor(destination)
 
     # Truncate very large documents to avoid Ollama crashes
     max_content_length = 50000  # ~50KB of text
@@ -171,8 +175,8 @@ async def upload_file(file: UploadFile = File(...)):
     except Exception as e:
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to embed document. Ollama embedding service may have crashed: {str(e)}"
-        )
+            detail=f"Failed to embed document. Ollama embedding service may have crashed: {str(e)}",
+        ) from e
 
     return JSONResponse(
         status_code=201,
@@ -225,16 +229,29 @@ async def chat_with_documents(request: ChatRequest):
     Maintains conversation context and provides conversational responses.
     
     Args:
-        request: ChatRequest containing message and optional chat_history
+        request: ChatRequest containing message, optional chat_history, and system_prompt
+        
+    System Prompt Options:
+        - Use a predefined prompt type (e.g., "default", "technical", "summarizer")
+        - Provide custom system prompt text
+        - Leave as "default" for general assistance
     """
     if not request.message:
         raise HTTPException(status_code=400, detail="Message cannot be empty.")
     
-    # Create chat engine from index with streaming enabled
+    # Get system prompt (either predefined type or custom text)
+    if request.system_prompt in list_available_prompts():
+        system_prompt = get_system_prompt(request.system_prompt)
+    else:
+        # Use custom system prompt if provided
+        system_prompt = request.system_prompt or get_system_prompt("default")
+    
+    # Create chat engine from index with streaming enabled and system prompt
     chat_engine = index.as_chat_engine(
         chat_mode="context",  # Uses retrieval context for each message
         similarity_top_k=5,
         streaming=True,  # Enable streaming
+        system_prompt=system_prompt,
     )
     
     # If chat history is provided, restore context
@@ -284,6 +301,41 @@ async def chat_with_documents(request: ChatRequest):
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
+        }
+    )
+
+@app.get("/prompts")
+async def get_prompts():
+    """
+    Get information about all available system prompts.
+    Returns prompt types with descriptions.
+    """
+    return JSONResponse(
+        content={
+            "available_prompts": list_available_prompts(),
+            "prompts_info": get_prompts_info(),
+            "note": "Use these prompt types in the 'system_prompt' field of /chat requests, or provide your own custom prompt text"
+        }
+    )
+
+@app.get("/prompts/{prompt_type}")
+async def get_specific_prompt(prompt_type: str):
+    """
+    Get the full text of a specific system prompt.
+    
+    Args:
+        prompt_type: The type of prompt to retrieve
+    """
+    if prompt_type not in list_available_prompts():
+        raise HTTPException(
+            status_code=404, 
+            detail=f"Prompt type '{prompt_type}' not found. Available types: {', '.join(list_available_prompts())}"
+        )
+    
+    return JSONResponse(
+        content={
+            "prompt_type": prompt_type,
+            "prompt_text": get_system_prompt(prompt_type)
         }
     )
 

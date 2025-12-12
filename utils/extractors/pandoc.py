@@ -1,7 +1,7 @@
 import subprocess
 from fastapi import HTTPException
 
-def doc_extractor(destination):
+def pandoc_extractor(destination):
     """Extract text from document, preserving page structure when possible"""
     try:
         # Try to extract with page breaks preserved
