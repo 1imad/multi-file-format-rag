@@ -27,7 +27,7 @@ DB_NAME = os.getenv("PGDATABASE", "embeddings")
 DB_USER = os.getenv("PGUSER", "imad")
 DB_PASSWORD = os.getenv("PGPASSWORD", "123456789")
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "nomic-embed-text")
-OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+LLM_URL = os.getenv("LLM_URL", "http://localhost:11434")
 
 # Global vector store and index
 vector_store = None
@@ -43,14 +43,14 @@ async def initialize_llamaindex():
     # Configure Ollama embeddings with smaller batch size for stability
     embed_model = OllamaEmbedding(
         model_name=EMBEDDING_MODEL,
-        base_url=OLLAMA_BASE_URL,
+        base_url=LLM_URL,
         embed_batch_size=1,  # Process one at a time to avoid Ollama crashes
     )
     
     # Configure Ollama LLM for query engine
     llm = Ollama(
         model="gemma3:1b",  # Use a small fast model for queries
-        base_url=OLLAMA_BASE_URL,
+        base_url=LLM_URL,
         request_timeout=30.0,
     )
     

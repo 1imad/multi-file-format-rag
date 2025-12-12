@@ -5,7 +5,7 @@ import dotenv
 import requests
 
 dotenv.load_dotenv()
-EMBEDDING_URL = os.getenv("EMBEDDING_URL")
+LLM_URL_EMBEDDING = os.getenv("LLM_URL_EMBEDDING")
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL")
 
 def generate_embedding(text: str) -> List[float]:
@@ -14,7 +14,7 @@ def generate_embedding(text: str) -> List[float]:
     """
     try:
         response = requests.post(
-            EMBEDDING_URL,
+            LLM_URL_EMBEDDING,
             json={"model": EMBEDDING_MODEL, "prompt": text},
             timeout=10,
         )
