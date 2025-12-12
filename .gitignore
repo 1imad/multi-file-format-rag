@@ -69,3 +69,7 @@ dmypy.json
 .vscode
 
 .env
+
+sample_docs
+
+uploads

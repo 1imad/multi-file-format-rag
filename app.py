@@ -2,6 +2,7 @@ from pathlib import Path
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.responses import JSONResponse
 import uvicorn
+from utils.pandoc_supported import pandoc_supported
 from utils.embed import generate_embedding
 from utils.extractors.doc_extractor import doc_extractor
 
@@ -30,7 +31,7 @@ async def upload_file(file: UploadFile = File(...)):
 
     file_extension = file.filename.split(".")[-1].lower()
     content = ""
-    if(file_extension == "docx"):
+    if file_extension in pandoc_supported():
         content = doc_extractor(destination)
     else:
         raise HTTPException(status_code=400, detail="Unsupported file type for extraction.")
