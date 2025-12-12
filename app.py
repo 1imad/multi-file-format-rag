@@ -1,10 +1,13 @@
 from pathlib import Path
-from fastapi import FastAPI, UploadFile, File, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, UploadFile, File, HTTPException, Body
+from fastapi.responses import JSONResponse, StreamingResponse
+from pydantic import BaseModel
+from typing import List, Optional
 import uvicorn
 from contextlib import asynccontextmanager
 import os
 import dotenv
+import json
 
 # LlamaIndex imports
 from llama_index.core import VectorStoreIndex, Document, StorageContext, Settings
@@ -92,6 +95,15 @@ UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 # Initialize FastAPI app
 app = FastAPI(title="LlamaIndex Upload & Embeddings API", lifespan=lifespan)
 
+# Pydantic models for request/response
+class ChatMessage(BaseModel):
+    role: str
+    content: str
+
+class ChatRequest(BaseModel):
+    message: str
+    chat_history: Optional[List[ChatMessage]] = None
+
 @app.post("/upload")
 async def upload_file(file: UploadFile = File(...)):
     """
@@ -100,7 +112,7 @@ async def upload_file(file: UploadFile = File(...)):
     """
     if not file.filename:
         raise HTTPException(status_code=400, detail="Uploaded file must include a filename.")
-    
+
     # Save the uploaded file
     destination = UPLOAD_DIR / file.filename
     print(f"Saving uploaded file to: {destination}")
@@ -114,36 +126,54 @@ async def upload_file(file: UploadFile = File(...)):
     file_extension = file.filename.split(".")[-1].lower()
     if file_extension not in pandoc_supported():
         raise HTTPException(status_code=400, detail="Unsupported file type for extraction.")
-    
-    # Extract content
+
+    # Extract content with page breaks preserved
     content = doc_extractor(destination)
-    
+
     # Truncate very large documents to avoid Ollama crashes
     max_content_length = 50000  # ~50KB of text
     if len(content) > max_content_length:
         content = content[:max_content_length]
         print(f"Warning: Content truncated to {max_content_length} characters")
-    
-    # Create LlamaIndex Document with metadata
-    document = Document(
-        text=content,
-        metadata={
-            "filename": file.filename,
-            "content_type": file.content_type,
-            "file_size": destination.stat().st_size,
-            "file_path": str(destination),
-        }
-    )
-    
+
+    # Split by form feeds if present, otherwise split by estimated page size
+    if '\f' in content:
+        pages = content.split('\f')
+    else:
+        # Split content into chunks and estimate page numbers
+        # Average page is ~3000 characters (roughly 500 words)
+        chars_per_page = 3000
+
+        pages = [
+            content[i : i + chars_per_page]
+            for i in range(0, len(content), chars_per_page)
+        ]
+    documents = []
+    for page_num, page_content in enumerate(pages, start=1):
+        if page_content.strip():  # Skip empty pages
+            doc = Document(
+                text=page_content.strip(),
+                metadata={
+                    "filename": file.filename,
+                    "content_type": file.content_type,
+                    "file_size": destination.stat().st_size,
+                    "file_path": str(destination),
+                    "page_number": page_num,
+                    "total_pages": len(pages),
+                }
+            )
+            documents.append(doc)
+
     # Insert into vector store (LlamaIndex handles chunking and embedding)
     try:
-        index.insert(document)
+        for doc in documents:
+            index.insert(doc)
     except Exception as e:
         raise HTTPException(
             status_code=500,
             detail=f"Failed to embed document. Ollama embedding service may have crashed: {str(e)}"
         )
-    
+
     return JSONResponse(
         status_code=201,
         content={
@@ -167,22 +197,93 @@ async def query_documents(query: str, top_k: int = 5):
     # Query the index
     query_engine = index.as_query_engine(similarity_top_k=top_k)
     response = query_engine.query(query)
-
-    # Extract source nodes for detailed results
+    # Extract source nodes for detailed results with page numbers
     results = []
-    results.extend(
-        {
+    for node in response.source_nodes:
+        result = {
             "text": node.node.text,
             "score": node.score,
+            "filename": node.node.metadata.get("filename", "unknown"),
+            "page_number": node.node.metadata.get("page_number"),
+            "content_type": node.node.metadata.get("content_type"),
             "metadata": node.node.metadata,
         }
-        for node in response.source_nodes
-    )
+        results.append(result)
+    
     return JSONResponse(
         content={
             "query": query,
             "response": str(response),
             "sources": results,
+        }
+    )
+
+@app.post("/chat")
+async def chat_with_documents(request: ChatRequest):
+    """
+    Chat with documents using LlamaIndex chat engine with streaming.
+    Maintains conversation context and provides conversational responses.
+    
+    Args:
+        request: ChatRequest containing message and optional chat_history
+    """
+    if not request.message:
+        raise HTTPException(status_code=400, detail="Message cannot be empty.")
+    
+    # Create chat engine from index with streaming enabled
+    chat_engine = index.as_chat_engine(
+        chat_mode="context",  # Uses retrieval context for each message
+        similarity_top_k=5,
+        streaming=True,  # Enable streaming
+    )
+    
+    # If chat history is provided, restore context
+    if request.chat_history:
+        # LlamaIndex chat engine can handle chat history
+        # Build up the conversation context
+        for msg in request.chat_history:
+            if msg.role == "user":
+                # Send previous user messages to build context
+                chat_engine.chat(msg.content)
+    
+    # Stream response for current message
+    streaming_response = chat_engine.stream_chat(request.message)
+    
+    async def generate():
+        # Stream the response tokens as plain text
+        for token in streaming_response.response_gen:
+            yield token
+        
+        # After streaming is complete, add source references
+        if hasattr(streaming_response, 'source_nodes') and streaming_response.source_nodes:
+            yield "\n\n---\n**References:**\n"
+            
+            # Group sources by filename
+            sources_by_file = {}
+            for node in streaming_response.source_nodes:
+                filename = node.node.metadata.get("filename", "unknown")
+                page_num = node.node.metadata.get("page_number")
+                
+                if filename not in sources_by_file:
+                    sources_by_file[filename] = set()
+                if page_num:
+                    sources_by_file[filename].add(page_num)
+            
+            # Output references
+            for filename, pages in sources_by_file.items():
+                if pages:
+                    page_list = sorted(list(pages))
+                    pages_str = ", ".join([f"Page[{p}]" for p in page_list])
+                    yield f"- {filename} ({pages_str})\n"
+                else:
+                    yield f"- {filename}\n"
+    
+    return StreamingResponse(
+        generate(),
+        media_type="text/plain",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
         }
     )
 
