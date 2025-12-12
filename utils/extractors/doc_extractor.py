@@ -9,13 +9,14 @@ def doc_extractor(destination):
             text=True,
             check=True,
         )
-    except FileNotFoundError:
-        raise HTTPException(status_code=500, detail="Pandoc is not installed on the server.")
+    except FileNotFoundError as e:
+        raise HTTPException(
+            status_code=500, detail="Pandoc is not installed on the server."
+        ) from e
     except subprocess.CalledProcessError as exc:
         raise HTTPException(
             status_code=500,
             detail=f"Pandoc conversion failed: {exc.stderr.strip()}"
         )
-    
-    content = result.stdout
-    return content
+
+    return result.stdout
