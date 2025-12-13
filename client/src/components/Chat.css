@@ -1,3 +1,69 @@
+:root[data-theme="light"] {
+  --bg-primary: #ffffff;
+  --bg-secondary: #f3f4f6;
+  --bg-gradient-start: #f9fafb;
+  --bg-gradient-mid: #f3f4f6;
+  --bg-gradient-end: #e5e7eb;
+  --text-primary: #1f2937;
+  --text-secondary: #4b5563;
+  --text-tertiary: #6b7280;
+  --border-color: rgba(209, 213, 219, 0.5);
+  --header-bg: rgba(255, 255, 255, 0.8);
+  --message-user-bg: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
+  --message-assistant-bg: rgba(243, 244, 246, 0.8);
+  --message-assistant-text: #1f2937;
+  --message-assistant-border: rgba(209, 213, 219, 0.5);
+  --input-bg: rgba(249, 250, 251, 0.8);
+  --input-border: rgba(209, 213, 219, 0.8);
+  --input-border-focus: #3b82f6;
+  --code-bg: rgba(243, 244, 246, 0.8);
+  --code-border: rgba(209, 213, 219, 0.5);
+  --code-text: #4b5563;
+  --button-bg: rgba(99, 102, 241, 0.1);
+  --button-border: rgba(99, 102, 241, 0.3);
+  --button-text: #6366f1;
+  --button-hover-bg: rgba(99, 102, 241, 0.2);
+  --scrollbar-track: rgba(243, 244, 246, 0.5);
+  --scrollbar-thumb: linear-gradient(180deg, #9ca3af 0%, #6b7280 100%);
+  --avatar-bg: rgba(99, 102, 241, 0.1);
+  --avatar-border: rgba(99, 102, 241, 0.3);
+  --avatar-color: #6366f1;
+  --shadow-color: rgba(0, 0, 0, 0.1);
+}
+
+:root[data-theme="dark"] {
+  --bg-primary: #0f0f23;
+  --bg-secondary: #1a1a2e;
+  --bg-gradient-start: #0f0f23;
+  --bg-gradient-mid: #1a1a2e;
+  --bg-gradient-end: #16213e;
+  --text-primary: #e0e7ff;
+  --text-secondary: #c7d2fe;
+  --text-tertiary: #a5b4fc;
+  --border-color: rgba(99, 102, 241, 0.2);
+  --header-bg: rgba(255, 255, 255, 0.03);
+  --message-user-bg: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  --message-assistant-bg: rgba(30, 30, 46, 0.6);
+  --message-assistant-text: #e0e7ff;
+  --message-assistant-border: rgba(99, 102, 241, 0.2);
+  --input-bg: rgba(30, 30, 46, 0.6);
+  --input-border: rgba(99, 102, 241, 0.3);
+  --input-border-focus: #6366f1;
+  --code-bg: rgba(99, 102, 241, 0.15);
+  --code-border: rgba(99, 102, 241, 0.2);
+  --code-text: #c7d2fe;
+  --button-bg: rgba(99, 102, 241, 0.15);
+  --button-border: rgba(99, 102, 241, 0.3);
+  --button-text: #a5b4fc;
+  --button-hover-bg: rgba(99, 102, 241, 0.25);
+  --scrollbar-track: rgba(30, 30, 46, 0.3);
+  --scrollbar-thumb: linear-gradient(180deg, #6366f1 0%, #8b5cf6 100%);
+  --avatar-bg: rgba(99, 102, 241, 0.15);
+  --avatar-border: rgba(99, 102, 241, 0.3);
+  --avatar-color: #a5b4fc;
+  --shadow-color: rgba(0, 0, 0, 0.2);
+}
+
 .chat-layout {
   display: flex;
   height: 100vh;
@@ -10,7 +76,7 @@
   flex-direction: column;
   flex: 1;
   min-width: 0;
-  background: linear-gradient(135deg, #0f0f23 0%, #1a1a2e 50%, #16213e 100%);
+  background: linear-gradient(135deg, var(--bg-gradient-start) 0%, var(--bg-gradient-mid) 50%, var(--bg-gradient-end) 100%);
   overflow: hidden;
   position: relative;
 }
@@ -36,15 +102,15 @@
 
 .chat-header {
   padding: 1.5rem 2rem;
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--header-bg);
   backdrop-filter: blur(20px);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  color: white;
+  border-bottom: 1px solid var(--border-color);
+  color: var(--text-primary);
   display: flex;
   justify-content: space-between;
   align-items: center;
   z-index: 10;
-  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 4px 30px var(--shadow-color);
 }
 
 .chat-header h2 {
@@ -117,11 +183,11 @@
   justify-content: center;
   font-size: 1.3rem;
   flex-shrink: 0;
-  background: linear-gradient(135deg, rgba(99, 102, 241, 0.15) 0%, rgba(168, 85, 247, 0.15) 100%);
-  border: 2px solid rgba(99, 102, 241, 0.3);
+  background: var(--avatar-bg);
+  border: 2px solid var(--avatar-border);
   box-shadow: 0 4px 15px rgba(99, 102, 241, 0.2);
   backdrop-filter: blur(10px);
-  color: #a5b4fc;
+  color: var(--avatar-color);
 }
 
 .message-content {
@@ -138,7 +204,7 @@
 }
 
 .message.user .message-content {
-  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  background: var(--message-user-bg);
   color: white;
   border-bottom-right-radius: 6px;
   box-shadow: 0 8px 24px rgba(99, 102, 241, 0.3);
@@ -146,11 +212,11 @@
 }
 
 .message.assistant .message-content {
-  background: rgba(30, 30, 46, 0.6);
-  color: #e0e7ff;
-  border: 1px solid rgba(99, 102, 241, 0.2);
+  background: var(--message-assistant-bg);
+  color: var(--message-assistant-text);
+  border: 1px solid var(--message-assistant-border);
   border-bottom-left-radius: 6px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 8px 24px var(--shadow-color);
   backdrop-filter: blur(20px);
 }
 
@@ -203,13 +269,13 @@
 }
 
 .message-content code {
-  background: rgba(99, 102, 241, 0.15);
+  background: var(--code-bg);
   padding: 0.3rem 0.5rem;
   border-radius: 6px;
   font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', monospace;
   font-size: 0.88em;
-  color: #c7d2fe;
-  border: 1px solid rgba(99, 102, 241, 0.2);
+  color: var(--code-text);
+  border: 1px solid var(--code-border);
 }
 
 .message.user .message-content code {
@@ -303,10 +369,10 @@
   align-items: center;
   gap: 0.5rem;
   padding: 0.5rem 1rem;
-  background: rgba(99, 102, 241, 0.15);
-  border: 1px solid rgba(99, 102, 241, 0.3);
+  background: var(--button-bg);
+  border: 1px solid var(--button-border);
   border-radius: 8px;
-  color: #a5b4fc;
+  color: var(--button-text);
   font-size: 0.875rem;
   font-weight: 500;
   cursor: pointer;
@@ -314,9 +380,9 @@
 }
 
 .btn-copy-response:hover {
-  background: rgba(99, 102, 241, 0.25);
+  background: var(--button-hover-bg);
   border-color: rgba(99, 102, 241, 0.5);
-  color: #c7d2fe;
+  color: var(--text-secondary);
   transform: translateY(-1px);
 }
 
@@ -329,10 +395,10 @@
   align-items: center;
   gap: 0.5rem;
   padding: 0.5rem 1rem;
-  background: rgba(99, 102, 241, 0.15);
-  border: 1px solid rgba(99, 102, 241, 0.3);
+  background: var(--button-bg);
+  border: 1px solid var(--button-border);
   border-radius: 8px;
-  color: #a5b4fc;
+  color: var(--button-text);
   font-size: 0.875rem;
   font-weight: 500;
   cursor: pointer;
@@ -340,14 +406,40 @@
 }
 
 .btn-regenerate:hover {
-  background: rgba(99, 102, 241, 0.25);
+  background: var(--button-hover-bg);
   border-color: rgba(99, 102, 241, 0.5);
-  color: #c7d2fe;
+  color: var(--text-secondary);
   transform: translateY(-1px);
 }
 
 .btn-regenerate svg {
   font-size: 1rem;
+}
+
+.btn-theme-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  background: var(--button-bg);
+  border: 1px solid var(--button-border);
+  border-radius: 10px;
+  color: var(--button-text);
+  font-size: 1.2rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-theme-toggle:hover {
+  background: var(--button-hover-bg);
+  border-color: rgba(99, 102, 241, 0.5);
+  transform: translateY(-1px);
+}
+
+.btn-theme-toggle svg {
+  width: 20px;
+  height: 20px;
 }
 
 .code-block-container {
@@ -436,11 +528,11 @@
 
 .chat-input-container {
   padding: 1.5rem 2rem 2rem;
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--header-bg);
   backdrop-filter: blur(20px);
-  border-top: 1px solid rgba(99, 102, 241, 0.2);
+  border-top: 1px solid var(--border-color);
   z-index: 10;
-  box-shadow: 0 -4px 30px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 -4px 30px var(--shadow-color);
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
@@ -510,8 +602,8 @@
   position: relative;
   display: flex;
   align-items: center;
-  background: rgba(30, 30, 46, 0.6);
-  border: 2px solid rgba(99, 102, 241, 0.3);
+  background: var(--input-bg);
+  border: 2px solid var(--input-border);
   border-radius: 16px;
   backdrop-filter: blur(20px);
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -522,7 +614,7 @@
 }
 
 .input-wrapper:focus-within {
-  border-color: #6366f1;
+  border-color: var(--input-border-focus);
   box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.1), 0 8px 24px rgba(99, 102, 241, 0.2);
 }
 
@@ -561,7 +653,7 @@
   border: none;
   font-size: 0.95rem;
   font-family: inherit;
-  color: #e0e7ff;
+  color: var(--text-primary);
   resize: none;
   min-height: 50px;
   max-height: 192px;
@@ -586,9 +678,10 @@
 .chat-actions {
   position: absolute;
   right: 0.75rem;
-  bottom: 0.5rem;
+  bottom: 0.75rem;
   display: flex;
   align-items: center;
+  justify-content: center;
 }
 
 .btn {
@@ -680,14 +773,14 @@
 }
 
 .chat-messages::-webkit-scrollbar-track {
-  background: rgba(30, 30, 46, 0.3);
+  background: var(--scrollbar-track);
   border-radius: 10px;
 }
 
 .chat-messages::-webkit-scrollbar-thumb {
-  background: linear-gradient(180deg, #6366f1 0%, #8b5cf6 100%);
+  background: var(--scrollbar-thumb);
   border-radius: 10px;
-  border: 2px solid rgba(30, 30, 46, 0.3);
+  border: 2px solid var(--scrollbar-track);
 }
 
 .chat-messages::-webkit-scrollbar-thumb:hover {

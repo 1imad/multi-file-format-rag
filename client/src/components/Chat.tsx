@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import rehypeHighlight from 'rehype-highlight';
 import 'highlight.js/styles/tokyo-night-dark.css';
-import { IoSend, IoCopy, IoCheckmark } from 'react-icons/io5';
+import { IoSend, IoCopy, IoCheckmark, IoMoon, IoSunny } from 'react-icons/io5';
 import { MdStop, MdRefresh, MdVisibility } from 'react-icons/md';
 import { FiUser } from 'react-icons/fi';
 import { RiRobot2Line } from 'react-icons/ri';
@@ -34,6 +34,10 @@ export default function Chat({ apiUrl = 'http://localhost:8000', systemPrompt = 
   const [isHtmlPreviewOpen, setIsHtmlPreviewOpen] = useState(false);
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
   const [copiedResponse, setCopiedResponse] = useState<number | null>(null);
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    const savedTheme = localStorage.getItem('chat-theme');
+    return (savedTheme as 'light' | 'dark') || 'light';
+  });
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -42,6 +46,15 @@ export default function Chat({ apiUrl = 'http://localhost:8000', systemPrompt = 
   useEffect(() => {
     scrollToBottom();
   }, [messages, currentStreamingMessage]);
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('chat-theme', theme);
+  }, [theme]);
+
+  const toggleTheme = () => {
+    setTheme(prev => prev === 'light' ? 'dark' : 'light');
+  };
 
   const handleInput = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setInput(e.target.value);
@@ -359,6 +372,13 @@ export default function Chat({ apiUrl = 'http://localhost:8000', systemPrompt = 
         <h2>RAG Chat Assistant</h2>
         <div className="chat-info">
           <span className="prompt-badge">{systemPrompt}</span>
+          <button 
+            className="btn-theme-toggle" 
+            onClick={toggleTheme}
+            title={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}
+          >
+            {theme === 'light' ? <IoMoon /> : <IoSunny />}
+          </button>
         </div>
       </div>
 
