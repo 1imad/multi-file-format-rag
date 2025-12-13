@@ -442,6 +442,32 @@
   height: 20px;
 }
 
+.btn-settings {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  background: var(--button-bg);
+  border: 1px solid var(--button-border);
+  border-radius: 10px;
+  color: var(--button-text);
+  font-size: 1.2rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-settings:hover {
+  background: var(--button-hover-bg);
+  border-color: rgba(99, 102, 241, 0.5);
+  transform: translateY(-1px);
+}
+
+.btn-settings svg {
+  width: 20px;
+  height: 20px;
+}
+
 .code-block-container {
   position: relative;
   margin: 1rem 0;

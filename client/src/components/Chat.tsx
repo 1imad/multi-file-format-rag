@@ -2,13 +2,15 @@ import { useState, useRef, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import rehypeHighlight from 'rehype-highlight';
 import 'highlight.js/styles/tokyo-night-dark.css';
-import { IoSend, IoCopy, IoCheckmark, IoMoon, IoSunny } from 'react-icons/io5';
+import { IoSend, IoCopy, IoCheckmark, IoMoon, IoSunny, IoSettings } from 'react-icons/io5';
 import { MdStop, MdRefresh, MdVisibility } from 'react-icons/md';
 import { FiUser } from 'react-icons/fi';
 import { RiRobot2Line } from 'react-icons/ri';
 import FileList from './FileList';
 import UploadModal from './UploadModal';
 import HtmlPreviewModal from './HtmlPreviewModal';
+import SettingsModal from './SettingsModal';
+import type { SettingsData } from './SettingsModal';
 import './Chat.css';
 
 interface ChatMessage {
@@ -38,6 +40,15 @@ export default function Chat({ apiUrl = 'http://localhost:8000', systemPrompt = 
     const savedTheme = localStorage.getItem('chat-theme');
     return (savedTheme as 'light' | 'dark') || 'light';
   });
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [settings, setSettings] = useState<SettingsData>(() => {
+    const savedSettings = localStorage.getItem('chat-settings');
+    return savedSettings ? JSON.parse(savedSettings) : {
+      backendUrl: apiUrl,
+      embeddingModel: 'text-embedding-3-small',
+      llmModel: 'gpt-4o-mini',
+    };
+  });
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -54,6 +65,11 @@ export default function Chat({ apiUrl = 'http://localhost:8000', systemPrompt = 
 
   const toggleTheme = () => {
     setTheme(prev => prev === 'light' ? 'dark' : 'light');
+  };
+
+  const handleSettingsSave = (newSettings: SettingsData) => {
+    setSettings(newSettings);
+    localStorage.setItem('chat-settings', JSON.stringify(newSettings));
   };
 
   const handleInput = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -88,7 +104,7 @@ export default function Chat({ apiUrl = 'http://localhost:8000', systemPrompt = 
     abortControllerRef.current = new AbortController();
 
     try {
-      const response = await fetch(`${apiUrl}/chat`, {
+      const response = await fetch(`${settings.backendUrl}/chat`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -97,6 +113,8 @@ export default function Chat({ apiUrl = 'http://localhost:8000', systemPrompt = 
           message: userMessage.content,
           chat_history: messages,
           system_prompt: systemPrompt,
+          embedding_model: settings.embeddingModel,
+          llm_model: settings.llmModel,
         }),
         signal: abortControllerRef.current.signal,
       });
@@ -302,7 +320,7 @@ export default function Chat({ apiUrl = 'http://localhost:8000', systemPrompt = 
     abortControllerRef.current = new AbortController();
 
     try {
-      const response = await fetch(`${apiUrl}/chat`, {
+      const response = await fetch(`${settings.backendUrl}/chat`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -311,6 +329,8 @@ export default function Chat({ apiUrl = 'http://localhost:8000', systemPrompt = 
           message: lastUserMessage.content,
           chat_history: updatedMessages.slice(0, -1), // Exclude the last user message from history
           system_prompt: systemPrompt,
+          embedding_model: settings.embeddingModel,
+          llm_model: settings.llmModel,
         }),
         signal: abortControllerRef.current.signal,
       });
@@ -378,6 +398,13 @@ export default function Chat({ apiUrl = 'http://localhost:8000', systemPrompt = 
             title={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}
           >
             {theme === 'light' ? <IoMoon /> : <IoSunny />}
+          </button>
+          <button 
+            className="btn-settings" 
+            onClick={() => setIsSettingsOpen(true)}
+            title="Settings"
+          >
+            <IoSettings />
           </button>
         </div>
       </div>
@@ -497,6 +524,12 @@ export default function Chat({ apiUrl = 'http://localhost:8000', systemPrompt = 
         isOpen={isHtmlPreviewOpen}
         onClose={() => setIsHtmlPreviewOpen(false)}
         htmlContent={htmlPreviewContent}
+      />
+      <SettingsModal
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        onSave={handleSettingsSave}
+        currentSettings={settings}
       />
     </div>
   );
