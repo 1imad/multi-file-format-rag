@@ -8,11 +8,12 @@ interface UploadModalProps {
   onClose: () => void;
   onUploadSuccess: () => void;
   apiUrl?: string;
+  token: string;
 }
 
 type UploadStatus = 'idle' | 'uploading' | 'success' | 'error';
 
-export default function UploadModal({ isOpen, onClose, onUploadSuccess, apiUrl = 'http://localhost:8000' }: UploadModalProps) {
+export default function UploadModal({ isOpen, onClose, onUploadSuccess, apiUrl = 'http://localhost:8000', token }: UploadModalProps) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploadStatus, setUploadStatus] = useState<UploadStatus>('idle');
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -73,6 +74,9 @@ export default function UploadModal({ isOpen, onClose, onUploadSuccess, apiUrl =
 
       const response = await fetch(`${apiUrl}/upload`, {
         method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
         body: formData,
       });
 

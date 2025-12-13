@@ -12,11 +12,12 @@ interface FileInfo {
 
 interface FileListProps {
   apiUrl?: string;
+  token: string;
   onFileDeleted?: () => void;
   onUploadClick?: () => void;
 }
 
-export default function FileList({ apiUrl = 'http://localhost:8000', onFileDeleted, onUploadClick }: FileListProps) {
+export default function FileList({ apiUrl = 'http://localhost:8000', token, onFileDeleted, onUploadClick }: FileListProps) {
   const [files, setFiles] = useState<FileInfo[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -25,8 +26,16 @@ export default function FileList({ apiUrl = 'http://localhost:8000', onFileDelet
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch(`${apiUrl}/files`);
+      const response = await fetch(`${apiUrl}/files`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
       if (!response.ok) {
+        if (response.status === 401) {
+          setError('Session expired. Please refresh the page and login again.');
+          return;
+        }
         throw new Error(`Failed to fetch files: ${response.statusText}`);
       }
       const data = await response.json();
@@ -47,6 +56,9 @@ export default function FileList({ apiUrl = 'http://localhost:8000', onFileDelet
     try {
       const response = await fetch(`${apiUrl}/files/${encodeURIComponent(filename)}`, {
         method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
       });
 
       if (!response.ok) {

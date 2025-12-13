@@ -21,9 +21,11 @@ interface ChatMessage {
 interface ChatProps {
   apiUrl?: string;
   systemPrompt?: string;
+  token: string;
+  onLogout: () => void;
 }
 
-export default function Chat({ apiUrl = 'http://localhost:8000', systemPrompt = 'default' }: ChatProps) {
+export default function Chat({ apiUrl = 'http://localhost:8000', systemPrompt = 'default', token, onLogout }: ChatProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
@@ -108,6 +110,7 @@ export default function Chat({ apiUrl = 'http://localhost:8000', systemPrompt = 
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
         },
         body: JSON.stringify({
           message: userMessage.content,
@@ -120,6 +123,11 @@ export default function Chat({ apiUrl = 'http://localhost:8000', systemPrompt = 
       });
 
       if (!response.ok) {
+        if (response.status === 401) {
+          // Token expired or invalid, logout user
+          onLogout();
+          throw new Error('Session expired. Please login again.');
+        }
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
@@ -324,6 +332,7 @@ export default function Chat({ apiUrl = 'http://localhost:8000', systemPrompt = 
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
         },
         body: JSON.stringify({
           message: lastUserMessage.content,
@@ -405,6 +414,13 @@ export default function Chat({ apiUrl = 'http://localhost:8000', systemPrompt = 
             title="Settings"
           >
             <IoSettings />
+          </button>
+          <button 
+            className="btn-logout" 
+            onClick={onLogout}
+            title="Logout"
+          >
+            Logout
           </button>
         </div>
       </div>
@@ -510,6 +526,7 @@ export default function Chat({ apiUrl = 'http://localhost:8000', systemPrompt = 
         <FileList 
           key={fileListKey} 
           apiUrl={apiUrl} 
+          token={token}
           onFileDeleted={() => setFileListKey(prev => prev + 1)}
           onUploadClick={() => setIsUploadModalOpen(true)}
         />
@@ -519,6 +536,7 @@ export default function Chat({ apiUrl = 'http://localhost:8000', systemPrompt = 
         onClose={() => setIsUploadModalOpen(false)}
         onUploadSuccess={handleUploadSuccess}
         apiUrl={apiUrl}
+        token={token}
       />
       <HtmlPreviewModal
         isOpen={isHtmlPreviewOpen}

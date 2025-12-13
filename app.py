@@ -1,5 +1,5 @@
 from pathlib import Path
-from fastapi import FastAPI, UploadFile, File, HTTPException, Body
+from fastapi import FastAPI, UploadFile, File, HTTPException, Body, Depends
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -8,6 +8,7 @@ import uvicorn
 from contextlib import asynccontextmanager
 import os
 import dotenv
+from datetime import timedelta
 
 # LlamaIndex imports
 from llama_index.core import VectorStoreIndex, Document, StorageContext, Settings
@@ -18,6 +19,16 @@ from utils.pandoc_supported import pandoc_supported
 from utils.extractors.pandoc import pandoc_extractor
 from utils.extractors.pdf import pdf_extractor
 from utils.prompts import get_system_prompt, list_available_prompts, get_prompts_info
+from utils.auth import (
+    get_password_hash,
+    verify_password,
+    create_access_token,
+    get_current_active_user,
+    UserCreate,
+    UserLogin,
+    Token,
+    ACCESS_TOKEN_EXPIRE_MINUTES
+)
 
 dotenv.load_dotenv()
 
@@ -117,8 +128,117 @@ class ChatRequest(BaseModel):
     chat_history: Optional[List[ChatMessage]] = None
     system_prompt: Optional[str] = "default"  # Can be a prompt type or custom text
 
+@app.post("/register", response_model=Token)
+async def register(user: UserCreate):
+    """
+    Register a new user.
+    Creates a user account and returns a JWT access token.
+    """
+    import asyncpg
+    
+    conn = await asyncpg.connect(
+        host=DB_HOST,
+        port=int(DB_PORT),
+        database=DB_NAME,
+        user=DB_USER,
+        password=DB_PASSWORD
+    )
+    
+    try:
+        # Check if user already exists
+        existing_user = await conn.fetchrow(
+            "SELECT id FROM users WHERE email = $1",
+            user.email
+        )
+        
+        if existing_user:
+            raise HTTPException(
+                status_code=400,
+                detail="Email already registered"
+            )
+        
+        # Hash password and create user
+        hashed_password = get_password_hash(user.password)
+        await conn.execute(
+            """INSERT INTO users (email, hashed_password, full_name) 
+               VALUES ($1, $2, $3)""",
+            user.email,
+            hashed_password,
+            user.full_name
+        )
+        
+        # Create access token
+        access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        access_token = create_access_token(
+            data={"sub": user.email},
+            expires_delta=access_token_expires
+        )
+        
+        return {"access_token": access_token, "token_type": "bearer"}
+        
+    finally:
+        await conn.close()
+
+@app.post("/login", response_model=Token)
+async def login(user: UserLogin):
+    """
+    Login with email and password.
+    Returns a JWT access token on successful authentication.
+    """
+    import asyncpg
+    
+    conn = await asyncpg.connect(
+        host=DB_HOST,
+        port=int(DB_PORT),
+        database=DB_NAME,
+        user=DB_USER,
+        password=DB_PASSWORD
+    )
+    
+    try:
+        # Get user from database
+        db_user = await conn.fetchrow(
+            "SELECT email, hashed_password, is_active FROM users WHERE email = $1",
+            user.email
+        )
+        
+        if not db_user:
+            raise HTTPException(
+                status_code=401,
+                detail="Incorrect email or password"
+            )
+        
+        # Verify password
+        if not verify_password(user.password, db_user['hashed_password']):
+            raise HTTPException(
+                status_code=401,
+                detail="Incorrect email or password"
+            )
+        
+        # Check if user is active
+        if not db_user['is_active']:
+            raise HTTPException(
+                status_code=400,
+                detail="Inactive user account"
+            )
+        
+        # Create access token
+        access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        access_token = create_access_token(
+            data={"sub": user.email},
+            expires_delta=access_token_expires
+        )
+        
+        return {"access_token": access_token, "token_type": "bearer"}
+        
+    finally:
+        await conn.close()
+
 @app.post("/upload")
-async def upload_file(file: UploadFile = File(...)):
+async def upload_file(
+    file: UploadFile = File(...),
+    current_user: str = Depends(get_current_active_user)
+):
     """
     Upload a file, extract content, and store in LlamaIndex vector store.
     LlamaIndex handles chunking, embedding, and storage automatically.
@@ -179,10 +299,36 @@ async def upload_file(file: UploadFile = File(...)):
             )
             documents.append(doc)
 
-    # Insert into vector store (LlamaIndex handles chunking and embedding)
+    # Insert into vector store and update user_id column
     try:
+        import asyncpg
+        
+        conn = await asyncpg.connect(
+            host=DB_HOST,
+            port=int(DB_PORT),
+            database=DB_NAME,
+            user=DB_USER,
+            password=DB_PASSWORD
+        )
+        
         for doc in documents:
+            # Insert document into index
             index.insert(doc)
+            
+        # Update user_id for all documents with this filename
+        # (LlamaIndex inserts happen synchronously, so we can update after)
+        await conn.execute(
+            """
+            UPDATE data_llamaindex_embeddings 
+            SET user_id = $1 
+            WHERE metadata_->>'filename' = $2 
+            AND user_id IS NULL
+            """,
+            current_user,
+            file.filename
+        )
+        
+        await conn.close()
     except Exception as e:
         raise HTTPException(
             status_code=500,
@@ -201,29 +347,67 @@ async def upload_file(file: UploadFile = File(...)):
     )
 
 @app.get("/query")
-async def query_documents(query: str, top_k: int = 5):
+async def query_documents(
+    query: str,
+    top_k: int = 5,
+    current_user: str = Depends(get_current_active_user)
+):
     """
-    Query the vector store using LlamaIndex.
+    Query the vector store using LlamaIndex for the current user's documents.
     Returns the most relevant chunks with their metadata.
     """
     if not query:
         raise HTTPException(status_code=400, detail="Query cannot be empty.")
 
-    # Query the index
-    query_engine = index.as_query_engine(similarity_top_k=top_k)
+    # Query using direct database filter on user_id column
+    import asyncpg
+    
+    conn = await asyncpg.connect(
+        host=DB_HOST,
+        port=int(DB_PORT),
+        database=DB_NAME,
+        user=DB_USER,
+        password=DB_PASSWORD
+    )
+    
+    # Get node IDs for user's documents
+    node_ids_query = """
+        SELECT node_id 
+        FROM data_llamaindex_embeddings 
+        WHERE user_id = $1
+    """
+    node_rows = await conn.fetch(node_ids_query, current_user)
+    await conn.close()
+    
+    if not node_rows:
+        return JSONResponse(
+            content={
+                "query": query,
+                "response": "No documents found for your account.",
+                "sources": [],
+            }
+        )
+    
+    # Get all nodes and filter by user's node IDs
+    query_engine = index.as_query_engine(similarity_top_k=top_k * 10)  # Get more to filter
     response = query_engine.query(query)
-    # Extract source nodes for detailed results with page numbers
+    
+    # Filter results by user's node IDs
+    user_node_ids = {row['node_id'] for row in node_rows}
     results = []
     for node in response.source_nodes:
-        result = {
-            "text": node.node.text,
-            "score": node.score,
-            "filename": node.node.metadata.get("filename", "unknown"),
-            "page_number": node.node.metadata.get("page_number"),
-            "content_type": node.node.metadata.get("content_type"),
-            "metadata": node.node.metadata,
-        }
-        results.append(result)
+        if node.node.node_id in user_node_ids:
+            result = {
+                "text": node.node.text,
+                "score": node.score,
+                "filename": node.node.metadata.get("filename", "unknown"),
+                "page_number": node.node.metadata.get("page_number"),
+                "content_type": node.node.metadata.get("content_type"),
+                "metadata": node.node.metadata,
+            }
+            results.append(result)
+            if len(results) >= top_k:
+                break
     
     return JSONResponse(
         content={
@@ -234,7 +418,10 @@ async def query_documents(query: str, top_k: int = 5):
     )
 
 @app.post("/chat")
-async def chat_with_documents(request: ChatRequest):
+async def chat_with_documents(
+    request: ChatRequest,
+    current_user: str = Depends(get_current_active_user)
+):
     """
     Chat with documents using LlamaIndex chat engine with streaming.
     Maintains conversation context and provides conversational responses.
@@ -256,6 +443,42 @@ async def chat_with_documents(request: ChatRequest):
     else:
         # Use custom system prompt if provided
         system_prompt = request.system_prompt or get_system_prompt("default")
+    
+    # Get user's document node IDs from database
+    import asyncpg
+    
+    conn = await asyncpg.connect(
+        host=DB_HOST,
+        port=int(DB_PORT),
+        database=DB_NAME,
+        user=DB_USER,
+        password=DB_PASSWORD
+    )
+    
+    node_ids_query = """
+        SELECT node_id 
+        FROM data_llamaindex_embeddings 
+        WHERE user_id = $1
+    """
+    node_rows = await conn.fetch(node_ids_query, current_user)
+    await conn.close()
+    
+    if not node_rows:
+        # Return empty response if user has no documents
+        async def empty_response():
+            yield "You don't have any documents uploaded yet. Please upload documents first."
+        
+        return StreamingResponse(
+            empty_response(),
+            media_type="text/plain",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+            }
+        )
+    
+    # Store user's node IDs for filtering
+    user_node_ids = {row['node_id'] for row in node_rows}
     
     # Create chat engine from index with streaming enabled and system prompt
     chat_engine = index.as_chat_engine(
@@ -282,20 +505,22 @@ async def chat_with_documents(request: ChatRequest):
         for token in streaming_response.response_gen:
             yield token
         
-        # After streaming is complete, add source references
+        # After streaming is complete, add source references (filtered by user)
         if hasattr(streaming_response, 'source_nodes') and streaming_response.source_nodes:
             yield "\n\n---\n**References:**\n"
             
-            # Group sources by filename
+            # Group sources by filename (only user's documents)
             sources_by_file = {}
             for node in streaming_response.source_nodes:
-                filename = node.node.metadata.get("filename", "unknown")
-                page_num = node.node.metadata.get("page_number")
-                
-                if filename not in sources_by_file:
-                    sources_by_file[filename] = set()
-                if page_num:
-                    sources_by_file[filename].add(page_num)
+                # Only include nodes that belong to the user
+                if node.node.node_id in user_node_ids:
+                    filename = node.node.metadata.get("filename", "unknown")
+                    page_num = node.node.metadata.get("page_number")
+                    
+                    if filename not in sources_by_file:
+                        sources_by_file[filename] = set()
+                    if page_num:
+                        sources_by_file[filename].add(page_num)
             
             # Output references
             for filename, pages in sources_by_file.items():
@@ -351,13 +576,13 @@ async def get_specific_prompt(prompt_type: str):
     )
 
 @app.get("/files")
-async def list_files():
+async def list_files(current_user: str = Depends(get_current_active_user)):
     """
-    List all unique files that have embeddings stored in the vector store.
+    List all unique files that have embeddings stored in the vector store for the current user.
     Returns a list of filenames with their metadata.
     """
     try:
-        # Query the database directly to get unique files
+        # Query the database directly to get unique files for this user
         import asyncpg
         
         conn = await asyncpg.connect(
@@ -368,16 +593,17 @@ async def list_files():
             password=DB_PASSWORD
         )
         
-        # Get unique filenames with their metadata
+        # Get unique filenames with their metadata filtered by user_id column
         query = """
-            SELECT DISTINCT 
+            SELECT 
                 metadata_->>'filename' as filename,
                 metadata_->>'content_type' as content_type,
                 metadata_->>'file_size' as file_size,
                 metadata_->>'file_path' as file_path,
                 COUNT(*) as chunk_count
             FROM data_llamaindex_embeddings
-            WHERE metadata_->>'filename' IS NOT NULL
+            WHERE user_id = $1
+              AND metadata_->>'filename' IS NOT NULL
             GROUP BY 
                 metadata_->>'filename',
                 metadata_->>'content_type',
@@ -386,7 +612,7 @@ async def list_files():
             ORDER BY metadata_->>'filename'
         """
         
-        rows = await conn.fetch(query)
+        rows = await conn.fetch(query, current_user)
         await conn.close()
         
         files = []
@@ -412,15 +638,18 @@ async def list_files():
         )
 
 @app.delete("/files/{filename}")
-async def delete_file(filename: str):
+async def delete_file(
+    filename: str,
+    current_user: str = Depends(get_current_active_user)
+):
     """
-    Delete all embeddings associated with a specific file.
+    Delete all embeddings associated with a specific file for the current user.
     
     Args:
         filename: The name of the file to delete
     """
     try:
-        # Query the database directly to delete embeddings for this file
+        # Query the database directly to delete embeddings for this file and user
         import asyncpg
         
         conn = await asyncpg.connect(
@@ -431,27 +660,29 @@ async def delete_file(filename: str):
             password=DB_PASSWORD
         )
         
-        # Check if file exists
+        # Check if file exists for this user using user_id column
         check_query = """
             SELECT COUNT(*) as count
             FROM data_llamaindex_embeddings
-            WHERE metadata_->>'filename' = $1
+            WHERE user_id = $1
+              AND metadata_->>'filename' = $2
         """
-        result = await conn.fetchrow(check_query, filename)
+        result = await conn.fetchrow(check_query, current_user, filename)
         
         if result['count'] == 0:
             await conn.close()
             raise HTTPException(
                 status_code=404,
-                detail=f"File '{filename}' not found in embeddings"
+                detail=f"File '{filename}' not found in your embeddings"
             )
         
-        # Delete all embeddings for this file
+        # Delete all embeddings for this file and user using user_id column
         delete_query = """
             DELETE FROM data_llamaindex_embeddings
-            WHERE metadata_->>'filename' = $1
+            WHERE user_id = $1
+              AND metadata_->>'filename' = $2
         """
-        deleted = await conn.execute(delete_query, filename)
+        deleted = await conn.execute(delete_query, current_user, filename)
         await conn.close()
         
         # Also try to delete the physical file if it exists
